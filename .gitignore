@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+
+# Umi specific
+src/.umi/
+src/.umi-production/
+src/.umi-test/
+.umi/
+.umi-production/
+.umi-test/
+.mfsu/
+.swc/
+.turbopack/
+
+# Environment & local config
+.env.local
+.env.*.local
+.umirc.local.ts
+config/config.local.ts
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
