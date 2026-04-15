@@ -130,6 +130,8 @@ export const articleApi = {
     keyword?: string
     categoryId?: number
     tagId?: number
+    /** 排序：newest-最新 / hot-热度综合 / views-浏览量 */
+    sortBy?: 'newest' | 'hot' | 'views'
     pageNum?: number
     pageSize?: number
   }) => request.get<any, PageResult<ArticleDTO>>('/article/list', { params }),

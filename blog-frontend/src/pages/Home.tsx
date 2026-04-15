@@ -74,8 +74,14 @@ const CATEGORY_ICON_MAP: Record<string, React.ReactNode> = {
   'Rust':           <FileCode2 size={18} />,
 }
 
-const SORT_TABS = ['热门', '最新', '热榜'] as const
+const SORT_TABS = ['最新', '热门', '热榜'] as const
 type SortTab = (typeof SORT_TABS)[number]
+
+const SORT_TAB_MAP: Record<SortTab, 'newest' | 'hot' | 'views'> = {
+  '最新': 'newest',
+  '热门': 'views',
+  '热榜': 'hot',
+}
 
 const PAGE_SIZE = 10
 
@@ -200,6 +206,7 @@ export default function Home() {
     try {
       const res = await articleApi.list({
         categoryId: catId || undefined,
+        sortBy: SORT_TAB_MAP[sortTab],
         pageNum,
         pageSize: PAGE_SIZE,
       })
@@ -211,7 +218,7 @@ export default function Home() {
       setLoading(false)
       setInitialLoad(false)
     }
-  }, [loading])
+  }, [loading, sortTab])
 
   // 切换分类 / 排序时重置
   useEffect(() => {
