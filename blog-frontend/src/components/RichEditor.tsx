@@ -1,8 +1,8 @@
 /**
  * RichEditor — 基于 Tiptap v3 的富文本编辑器
- * 支持：粗体、斜体、下划线、标题、引用、代码块、表格（列宽拖拽）、图片上传、链接
+ * 支持：粗体/斜体/下划线、标题、引用、代码块、表格（列宽拖拽）、图片上传、链接
  */
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -13,8 +13,6 @@ import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
-import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   Heading1, Heading2, Heading3,
@@ -28,85 +26,106 @@ import {
 
 const lowlight = createLowlight(common)
 
-// ─── 表格列宽拖拽扩展 ─────────────────────────────────────────────────────────
-const TableColumnResizeKey = new PluginKey('tableColumnResize')
+// ─── 表格列宽拖拽 Hook ────────────────────────────────────────────────────────
+function useTableColResize(editorEl: HTMLElement | null) {
+  useEffect(() => {
+    if (!editorEl) return
 
-const TableColumnResizeExtension = Extension.create({
-  name: 'tableColumnResize',
-  addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: TableColumnResizeKey,
-        view() {
-          let handle: HTMLElement | null = null
-          let startX = 0
-          let startWidth = 0
-          let targetCell: HTMLElement | null = null
+    let currentHandle: HTMLElement | null = null
+    let currentCell: HTMLElement | null = null
+    let isDragging = false
 
-          const cleanup = () => {
-            if (handle) {
-              handle.removeEventListener('mousedown', onMouseDown)
-              handle.remove()
-              handle = null
-              targetCell = null
-            }
-          }
+    function removeHandle() {
+      if (currentHandle) {
+        currentHandle.remove()
+        currentHandle = null
+        currentCell = null
+      }
+    }
 
-          const onMouseDown = (e: MouseEvent) => {
-            e.preventDefault()
-            e.stopPropagation()
-            const cell = targetCell
-            if (!cell) return
-            startX = e.clientX
-            startWidth = cell.offsetWidth
+    function onMouseMove(e: MouseEvent) {
+      if (isDragging) return
+      const target = e.target as HTMLElement
+      // 鼠标在手柄上时不处理
+      if (target === currentHandle || target.getAttribute('data-col-resize') === '1') return
 
-            const onMouseMove = (mv: MouseEvent) => {
-              const dx = mv.clientX - startX
-              const newW = Math.max(40, startWidth + dx)
-              cell.style.width = newW + 'px'
-              cell.style.minWidth = newW + 'px'
-            }
-            const onMouseUp = () => {
-              document.removeEventListener('mousemove', onMouseMove)
-              document.removeEventListener('mouseup', onMouseUp)
-            }
-            document.addEventListener('mousemove', onMouseMove)
-            document.addEventListener('mouseup', onMouseUp)
-          }
+      const cell = target.closest('th, td') as HTMLElement | null
+      if (!cell) { removeHandle(); return }
+      if (cell === currentCell) return
 
-          const onCellMouseOver = (e: MouseEvent) => {
-            const cell = (e.target as HTMLElement).closest('th, td') as HTMLElement | null
-            if (!cell) { cleanup(); return }
-            if (targetCell === cell) return
-            cleanup()
-            targetCell = cell
-            handle = document.createElement('div')
-            handle.style.cssText = `
-              position:absolute; top:0; right:0; bottom:0;
-              width:5px; cursor:col-resize;
-              background:transparent;
-              z-index:10;
-            `
-            cell.style.position = 'relative'
-            cell.appendChild(handle)
-            handle.addEventListener('mousedown', onMouseDown)
-          }
+      removeHandle()
+      currentCell = cell
 
-          return {
-            destroy() {
-              cleanup()
-            },
-            update(view: any) {
-              const dom = view.dom as HTMLElement
-              dom.removeEventListener('mouseover', onCellMouseOver)
-              dom.addEventListener('mouseover', onCellMouseOver)
-            },
-          }
-        },
-      }),
-    ]
-  },
-})
+      if (getComputedStyle(cell).position === 'static') {
+        cell.style.position = 'relative'
+      }
+
+      const handle = document.createElement('div')
+      handle.setAttribute('data-col-resize', '1')
+      handle.style.cssText = [
+        'position:absolute',
+        'top:0',
+        'right:-3px',
+        'bottom:0',
+        'width:6px',
+        'cursor:col-resize',
+        'z-index:30',
+        'background:transparent',
+        'user-select:none',
+        '-webkit-user-select:none',
+      ].join(';')
+      cell.appendChild(handle)
+      currentHandle = handle
+
+      handle.addEventListener('mouseenter', () => {
+        if (!isDragging) {
+          handle.style.background = 'rgba(0,120,212,0.4)'
+          handle.style.borderRadius = '2px'
+        }
+      })
+      handle.addEventListener('mouseleave', () => {
+        if (!isDragging) handle.style.background = 'transparent'
+      })
+      handle.addEventListener('mousedown', (down: MouseEvent) => {
+        down.preventDefault()
+        down.stopPropagation()
+        isDragging = true
+        handle.style.background = 'rgba(0,120,212,0.6)'
+
+        const startX = down.clientX
+        const startW = cell.getBoundingClientRect().width
+
+        function onDrag(mv: MouseEvent) {
+          if (!cell) return
+          const newW = Math.max(40, startW + (mv.clientX - startX))
+          cell.style.width = newW + 'px'
+          cell.style.minWidth = newW + 'px'
+        }
+        function onUp() {
+          isDragging = false
+          if (currentHandle) currentHandle.style.background = 'transparent'
+          document.removeEventListener('mousemove', onDrag)
+          document.removeEventListener('mouseup', onUp)
+        }
+        document.addEventListener('mousemove', onDrag)
+        document.addEventListener('mouseup', onUp)
+      })
+    }
+
+    function onMouseLeave() {
+      if (!isDragging) removeHandle()
+    }
+
+    editorEl.addEventListener('mousemove', onMouseMove)
+    editorEl.addEventListener('mouseleave', onMouseLeave)
+
+    return () => {
+      editorEl.removeEventListener('mousemove', onMouseMove)
+      editorEl.removeEventListener('mouseleave', onMouseLeave)
+      removeHandle()
+    }
+  }, [editorEl])
+}
 
 // ─── 工具栏按钮 ──────────────────────────────────────────────────────────────
 function ToolBtn({
@@ -155,11 +174,14 @@ export default function RichEditor({
   placeholder = '开始写作...',
 }: RichEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editorWrapRef = useRef<HTMLDivElement>(null)
+  // 持有 .tiptap DOM，用于注册列宽拖拽
+  const [editorDom, setEditorDom] = useState<HTMLElement | null>(null)
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        codeBlock: false, // 用 CodeBlockLowlight 替代
+        codeBlock: false,
         heading: { levels: [1, 2, 3] },
       }),
       Underline,
@@ -172,16 +194,13 @@ export default function RichEditor({
       TableCell,
       Placeholder.configure({ placeholder }),
       CodeBlockLowlight.configure({ lowlight }),
-      TableColumnResizeExtension,
     ],
     content: value || '',
     onUpdate({ editor }) {
       onChange(editor.getHTML())
     },
     editorProps: {
-      attributes: {
-        class: 'outline-none min-h-full px-10 py-8',
-      },
+      attributes: { class: 'outline-none min-h-full px-10 py-8' },
       handlePaste(view, event) {
         const items = event.clipboardData?.items
         if (!items || !onUploadImage) return false
@@ -191,11 +210,8 @@ export default function RichEditor({
             if (file) {
               event.preventDefault()
               onUploadImage(file).then((url) => {
-                const { schema, tr, selection } = view.state
-                view.dispatch(
-                  tr.replaceSelectionWith(schema.nodes.image.create({ src: url }), false)
-                    .setSelection(selection)
-                )
+                const { schema, tr } = view.state
+                view.dispatch(tr.replaceSelectionWith(schema.nodes.image.create({ src: url }), false))
               })
               return true
             }
@@ -213,11 +229,7 @@ export default function RichEditor({
             if (!coords) return false
             onUploadImage(file).then((url) => {
               const { schema } = view.state
-              const tr = view.state.tr.insert(
-                coords.pos,
-                schema.nodes.image.create({ src: url })
-              )
-              view.dispatch(tr)
+              view.dispatch(view.state.tr.insert(coords.pos, schema.nodes.image.create({ src: url })))
             })
             return true
           }
@@ -227,22 +239,29 @@ export default function RichEditor({
     },
   })
 
-  // 当外部 value 变化时同步（加载编辑文章）
+  // ── editor 挂载后，拿到 .tiptap DOM 元素注册拖拽 ──
+  useEffect(() => {
+    if (!editor || !editorWrapRef.current) return
+    const el = editorWrapRef.current.querySelector('.tiptap') as HTMLElement | null
+    setEditorDom(el)
+  }, [editor])
+
+  // ── 注入列宽拖拽 ──
+  useTableColResize(editorDom)
+
+  // ── 同步外部 value（加载已有文章） ──
   const lastValue = useRef(value)
   useEffect(() => {
     if (!editor) return
     if (value !== lastValue.current) {
       lastValue.current = value
-      const current = editor.getHTML()
-      if (current !== value) {
+      if (editor.getHTML() !== value) {
         editor.commands.setContent(value || '')
       }
     }
   }, [value, editor])
 
-  const insertImage = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
+  const insertImage = useCallback(() => fileInputRef.current?.click(), [])
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,9 +271,7 @@ export default function RichEditor({
       try {
         const url = await onUploadImage(file)
         editor.chain().focus().setImage({ src: url }).run()
-      } catch {
-        // 错误由父组件的 onUploadImage 处理
-      }
+      } catch { /* 错误由父组件处理 */ }
     },
     [onUploadImage, editor]
   )
@@ -264,11 +281,8 @@ export default function RichEditor({
     const prev = editor.getAttributes('link').href as string | undefined
     const url = window.prompt('输入链接地址', prev || '')
     if (url === null) return
-    if (url === '') {
-      editor.chain().focus().unsetLink().run()
-    } else {
-      editor.chain().focus().setLink({ href: url }).run()
-    }
+    if (url === '') editor.chain().focus().unsetLink().run()
+    else editor.chain().focus().setLink({ href: url }).run()
   }, [editor])
 
   if (!editor) return null
@@ -277,7 +291,6 @@ export default function RichEditor({
     <div className="flex flex-col h-full">
       {/* ── 工具栏 ── */}
       <div className="shrink-0 flex flex-wrap items-center gap-0.5 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-        {/* 撤销 / 重做 */}
         <ToolBtn title="撤销" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
           <Undo size={14} />
         </ToolBtn>
@@ -285,8 +298,6 @@ export default function RichEditor({
           <Redo size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 标题 */}
         <ToolBtn title="一级标题" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
           <Heading1 size={14} />
         </ToolBtn>
@@ -297,8 +308,6 @@ export default function RichEditor({
           <Heading3 size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 文字样式 */}
         <ToolBtn title="粗体" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
           <Bold size={14} />
         </ToolBtn>
@@ -312,8 +321,6 @@ export default function RichEditor({
           <Strikethrough size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 对齐 */}
         <ToolBtn title="左对齐" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
           <AlignLeft size={14} />
         </ToolBtn>
@@ -324,8 +331,6 @@ export default function RichEditor({
           <AlignRight size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 列表 */}
         <ToolBtn title="无序列表" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
           <List size={14} />
         </ToolBtn>
@@ -333,8 +338,6 @@ export default function RichEditor({
           <ListOrdered size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 引用 / 代码 */}
         <ToolBtn title="引用" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
           <Quote size={14} />
         </ToolBtn>
@@ -348,20 +351,14 @@ export default function RichEditor({
           <Minus size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 表格 */}
         <ToolBtn
           title="插入表格"
           active={editor.isActive('table')}
-          onClick={() =>
-            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-          }
+          onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
         >
           <TableIcon size={14} />
         </ToolBtn>
         <Divider />
-
-        {/* 图片 / 链接 */}
         <ToolBtn title="上传图片" onClick={insertImage}>
           <ImageIcon size={14} />
         </ToolBtn>
@@ -370,7 +367,6 @@ export default function RichEditor({
         </ToolBtn>
       </div>
 
-      {/* 隐藏文件 input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -380,7 +376,7 @@ export default function RichEditor({
       />
 
       {/* ── 编辑区 ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={editorWrapRef} className="flex-1 min-h-0 overflow-y-auto">
         <EditorContent editor={editor} className="h-full" />
       </div>
     </div>
