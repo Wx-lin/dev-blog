@@ -187,6 +187,20 @@ export const notifyApi = {
     request.post('/notify/read/all'),
 }
 
+// ---- Upload APIs ----
+export const uploadApi = {
+  /** 上传图片（富文本编辑器使用）🔒 */
+  image: (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    // 用完整路径，绕过 /api baseURL，直接走 /admin/upload/image
+    return request.post<any, string>('/admin/upload/image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      baseURL: '/',
+    }) as Promise<string>
+  },
+}
+
 // ---- Comment APIs ----
 export const commentApi = {
   list: (articleId: number) =>

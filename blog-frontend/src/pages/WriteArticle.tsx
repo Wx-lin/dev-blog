@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import MDEditor from '@uiw/react-md-editor'
+import MDEditor, { commands } from '@uiw/react-md-editor'
 import '@uiw/react-md-editor/markdown-editor.css'
 import {
   X,
@@ -17,12 +17,14 @@ import {
   Star,
   ChevronDown,
 } from 'lucide-react'
-import { articleApi, categoryApi, tagApi } from '@/api'
+import { articleApi, categoryApi, tagApi, uploadApi } from '@/api'
 import type { CategoryDTO, TagDTO } from '@/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useThemeStore } from '@/store/useThemeStore'
 
 type EditMode = 'split' | 'edit' | 'preview'
+
+const UPLOAD_IMAGE_COMMAND_KEY = '__uploadImage__'
 
 export default function WriteArticle() {
   const { user } = useAuthStore()
@@ -53,6 +55,7 @@ export default function WriteArticle() {
   const [editMode, setEditMode] = useState<EditMode>('split')
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [catOpen, setCatOpen] = useState(false)
   const [coverErr, setCoverErr] = useState(false)
@@ -162,6 +165,13 @@ export default function WriteArticle() {
 
         {/* Right – actions */}
         <div className="flex items-center gap-2">
+          {uploading && (
+            <span className="flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+              <Loader2 size={13} className="animate-spin" />
+              图片上传中...
+            </span>
+          )}
+
           <button
             onClick={() => doSave(0)}
             disabled={saving || publishing}
@@ -217,6 +227,60 @@ export default function WriteArticle() {
               visibleDragbar={false}
               hideToolbar={false}
               className="!border-0 !rounded-none h-full"
+              onImageUpload={async (file) => {
+                setUploading(true)
+                try {
+                  const url = await uploadApi.image(file)
+                  return url
+                } catch (e: any) {
+                  showToast('error', e?.message || '图片上传失败')
+                  return ''
+                } finally {
+                  setUploading(false)
+                }
+              }}
+              commands={[
+                commands.bold, commands.italic, commands.strikethrough,
+                commands.hr, commands.title,
+                commands.divider,
+                commands.link, commands.quote, commands.code, commands.codeBlock,
+                commands.comment,
+                commands.divider,
+                // 自定义图片上传命令
+                {
+                  name: UPLOAD_IMAGE_COMMAND_KEY,
+                  keyCommand: 'image',
+                  buttonProps: { 'aria-label': '上传图片', title: '上传图片' },
+                  icon: (
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M14.5 2A1.5 1.5 0 0 1 16 3.5v13A1.5 1.5 0 0 1 14.5 18h-9A1.5 1.5 0 0 1 4 16.5v-13A1.5 1.5 0 0 1 5.5 2h9zm-9 1a.5.5 0 0 0-.5.5v8.793l2.646-2.647a.5.5 0 0 1 .708 0L10 11.293l2.146-2.146a.5.5 0 0 1 .708 0L15 11.293V3.5a.5.5 0 0 0-.5-.5h-9zm0 13h9a.5.5 0 0 0 .5-.5V12.707l-2.646-2.646-2.146 2.146a.5.5 0 0 1-.708 0L8 10.707l-2.646 2.646.146.147V15.5a.5.5 0 0 0 .5.5zM8 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+                    </svg>
+                  ),
+                  execute: (_state, _api) => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.accept = 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml'
+                    input.onchange = async () => {
+                      const file = input.files?.[0]
+                      if (!file) return
+                      setUploading(true)
+                      try {
+                        const url = await uploadApi.image(file)
+                        _api.replaceSelection(`![](${url})`)
+                      } catch (e: any) {
+                        showToast('error', e?.message || '图片上传失败')
+                      } finally {
+                        setUploading(false)
+                      }
+                    }
+                    input.click()
+                  },
+                },
+                commands.divider,
+                commands.table,
+                commands.divider,
+                commands.unorderedListCommand, commands.orderedListCommand, commands.checkedListCommand,
+              ]}
             />
           </div>
         </div>
