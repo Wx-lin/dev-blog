@@ -1,11 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
-import rehypeRaw from 'rehype-raw'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 import { Eye, Heart, MessageCircle, Calendar, Tag, ArrowLeft, User } from 'lucide-react'
+
+// 配置 marked：使用 highlight.js 高亮代码块
+marked.setOptions({
+  // @ts-ignore
+  highlight: (code: string, lang: string) => {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value
+    }
+    return hljs.highlightAuto(code).value
+  },
+  breaks: true,
+})
+
+/** 判断内容是否是 HTML（新格式） */
+function isHtml(content: string): boolean {
+  return /^\s*<[a-zA-Z]/.test(content.trim())
+}
+
+/** 智能渲染：HTML 直接用，Markdown 先转 HTML */
+function renderContent(content: string): string {
+  if (!content) return ''
+  if (isHtml(content)) return content
+  return marked(content.replace(/\\n/g, '\n')) as string
+}
 import { format } from 'date-fns'
 import { articleApi, commentApi } from '@/api'
 import type { ArticleDTO, CommentDTO } from '@/api'
@@ -131,6 +153,9 @@ export default function ArticleDetail() {
     }
   }
 
+  // 渲染内容（自动兼容旧 Markdown 和新 HTML）
+  const contentHtml = useMemo(() => renderContent(article?.content || ''), [article?.content])
+
   if (loading) return <div className="max-w-3xl mx-auto px-4 py-10"><Loading /></div>
   if (!article) return null
 
@@ -201,14 +226,10 @@ export default function ArticleDetail() {
       <Separator className="mb-10" />
 
       {/* Content */}
-      <div className="prose max-w-none mb-10">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeHighlight, rehypeRaw]}
-        >
-          {(article.content || '').replace(/\\n/g, '\n')}
-        </ReactMarkdown>
-      </div>
+      <div
+        className="article-content max-w-none mb-10"
+        dangerouslySetInnerHTML={{ __html: contentHtml }}
+      />
 
       <Separator className="mb-10" />
 

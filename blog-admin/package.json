@@ -15,7 +15,8 @@
     "@ant-design/pro-components": "^2.4.4",
     "@uiw/react-md-editor": "^4.1.0",
     "@umijs/max": "^4.6.42",
-    "antd": "^5.4.0"
+    "antd": "^5.4.0",
+    "marked": "^18.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.0.33",

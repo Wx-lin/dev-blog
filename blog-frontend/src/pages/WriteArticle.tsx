@@ -1,14 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import MDEditor, { commands } from '@uiw/react-md-editor'
-import '@uiw/react-md-editor/markdown-editor.css'
 import {
   X,
   Save,
   Send,
-  LayoutPanelLeft,
-  Edit3,
-  Eye,
   Loader2,
   Image as ImageIcon,
   FolderOpen,
@@ -21,10 +16,7 @@ import { articleApi, categoryApi, tagApi, uploadApi } from '@/api'
 import type { CategoryDTO, TagDTO } from '@/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useThemeStore } from '@/store/useThemeStore'
-
-type EditMode = 'split' | 'edit' | 'preview'
-
-const UPLOAD_IMAGE_COMMAND_KEY = '__uploadImage__'
+import RichEditor from '@/components/RichEditor'
 
 export default function WriteArticle() {
   const { user } = useAuthStore()
@@ -52,7 +44,6 @@ export default function WriteArticle() {
   const [tags, setTags] = useState<TagDTO[]>([])
 
   // ui
-  const [editMode, setEditMode] = useState<EditMode>('split')
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -83,6 +74,19 @@ export default function WriteArticle() {
       setIsTop(a.isTop ?? 0)
     })
   }, [editId])
+
+  const handleUploadImage = useCallback(async (file: File): Promise<string> => {
+    setUploading(true)
+    try {
+      const url = await uploadApi.image(file)
+      return url
+    } catch (e: any) {
+      showToast('error', e?.message || '图片上传失败')
+      throw e
+    } finally {
+      setUploading(false)
+    }
+  }, [showToast])
 
   const doSave = async (status: 0 | 1) => {
     if (!title.trim()) { showToast('error', '请先填写文章标题'); return }
@@ -122,10 +126,7 @@ export default function WriteArticle() {
   if (!user) return null
 
   return (
-    <div
-      className="h-screen flex flex-col bg-white dark:bg-zinc-950 overflow-hidden"
-      data-color-mode={dark ? 'dark' : 'light'}
-    >
+    <div className="h-screen flex flex-col bg-white dark:bg-zinc-950 overflow-hidden">
       {/* ═══════════════════ TOP BAR ═══════════════════ */}
       <header className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 z-30">
         {/* Left */}
@@ -139,28 +140,6 @@ export default function WriteArticle() {
           <span className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">
             {editId ? '编辑文章' : '创作新文章'}
           </span>
-        </div>
-
-        {/* Center – view mode switcher */}
-        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
-          {([
-            { key: 'edit', icon: <Edit3 size={14} />, label: '编辑' },
-            { key: 'split', icon: <LayoutPanelLeft size={14} />, label: '分栏' },
-            { key: 'preview', icon: <Eye size={14} />, label: '预览' },
-          ] as { key: EditMode; icon: React.ReactNode; label: string }[]).map(({ key, icon, label }) => (
-            <button
-              key={key}
-              onClick={() => setEditMode(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                editMode === key
-                  ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-              }`}
-            >
-              {icon}
-              <span className="hidden sm:inline">{label}</span>
-            </button>
-          ))}
         </div>
 
         {/* Right – actions */}
@@ -197,7 +176,7 @@ export default function WriteArticle() {
         {/* ─── Editor Area ─── */}
         <div className="flex flex-col flex-1 min-w-0 border-r border-zinc-200 dark:border-zinc-800">
           {/* Title input */}
-          <div className="px-10 pt-8 pb-4 border-b border-zinc-100 dark:border-zinc-800/60">
+          <div className="px-10 pt-8 pb-4 border-b border-zinc-100 dark:border-zinc-800/60 shrink-0">
             <textarea
               value={title}
               onChange={(e) => setTitle(e.target.value.slice(0, 80))}
@@ -216,71 +195,14 @@ export default function WriteArticle() {
             </div>
           </div>
 
-          {/* MD Editor */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <MDEditor
+          {/* Rich Editor */}
+          <div className="flex-1 min-h-0 rich-editor-wrap">
+            <RichEditor
               value={content}
-              onChange={(v) => setContent(v ?? '')}
-              preview={editMode === 'split' ? 'live' : editMode === 'preview' ? 'preview' : 'edit'}
-              height="100%"
-              style={{ height: '100%', borderRadius: 0, border: 'none' }}
-              visibleDragbar={false}
-              hideToolbar={false}
-              className="!border-0 !rounded-none h-full"
-              onImageUpload={async (file) => {
-                setUploading(true)
-                try {
-                  const url = await uploadApi.image(file)
-                  return url
-                } catch (e: any) {
-                  showToast('error', e?.message || '图片上传失败')
-                  return ''
-                } finally {
-                  setUploading(false)
-                }
-              }}
-              commands={[
-                commands.bold, commands.italic, commands.strikethrough,
-                commands.hr, commands.title,
-                commands.divider,
-                commands.link, commands.quote, commands.code, commands.codeBlock,
-                commands.comment,
-                commands.divider,
-                // 自定义图片上传命令
-                {
-                  name: UPLOAD_IMAGE_COMMAND_KEY,
-                  keyCommand: 'image',
-                  buttonProps: { 'aria-label': '上传图片', title: '上传图片' },
-                  icon: (
-                    <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M14.5 2A1.5 1.5 0 0 1 16 3.5v13A1.5 1.5 0 0 1 14.5 18h-9A1.5 1.5 0 0 1 4 16.5v-13A1.5 1.5 0 0 1 5.5 2h9zm-9 1a.5.5 0 0 0-.5.5v8.793l2.646-2.647a.5.5 0 0 1 .708 0L10 11.293l2.146-2.146a.5.5 0 0 1 .708 0L15 11.293V3.5a.5.5 0 0 0-.5-.5h-9zm0 13h9a.5.5 0 0 0 .5-.5V12.707l-2.646-2.646-2.146 2.146a.5.5 0 0 1-.708 0L8 10.707l-2.646 2.646.146.147V15.5a.5.5 0 0 0 .5.5zM8 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
-                    </svg>
-                  ),
-                  execute: (_state, _api) => {
-                    const input = document.createElement('input')
-                    input.type = 'file'
-                    input.accept = 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml'
-                    input.onchange = async () => {
-                      const file = input.files?.[0]
-                      if (!file) return
-                      setUploading(true)
-                      try {
-                        const url = await uploadApi.image(file)
-                        _api.replaceSelection(`![](${url})`)
-                      } catch (e: any) {
-                        showToast('error', e?.message || '图片上传失败')
-                      } finally {
-                        setUploading(false)
-                      }
-                    }
-                    input.click()
-                  },
-                },
-                commands.divider,
-                commands.table,
-                commands.divider,
-                commands.unorderedListCommand, commands.orderedListCommand, commands.checkedListCommand,
-              ]}
+              onChange={setContent}
+              onUploadImage={handleUploadImage}
+              dark={dark}
+              placeholder="开始写作，支持粘贴 / 拖拽上传图片，表格可拖拽调整列宽..."
             />
           </div>
         </div>
@@ -331,7 +253,7 @@ export default function WriteArticle() {
               <div className="relative">
                 <button
                   onClick={() => setCatOpen((v) => !v)}
-                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-sm transition-colors cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-sm transition-colors cursor-pointer ${
                     categoryId
                       ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.08)] text-zinc-800 dark:text-zinc-100'
                       : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
@@ -350,7 +272,7 @@ export default function WriteArticle() {
                         <button
                           key={c.id}
                           onClick={() => { setCategoryId(c.id); setCatOpen(false) }}
-                           className={`w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer ${
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer ${
                             categoryId === c.id
                               ? 'bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))] font-semibold'
                               : 'text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700'
@@ -378,7 +300,7 @@ export default function WriteArticle() {
                     <button
                       key={t.id}
                       onClick={() => toggleTag(t.id)}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border cursor-pointer ${
                         active
                           ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary))]'
                           : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500'

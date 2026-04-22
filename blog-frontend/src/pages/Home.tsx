@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Eye, ThumbsUp, MessageCircle,
-  LayoutDashboard, Terminal, Globe, Cpu, Smartphone,
+  LayoutDashboard, Globe, Smartphone,
   BrainCircuit, Wrench, MoreHorizontal,
   PenLine, BookOpen, Database, Server, Cloud, Code2, Box,
   GitBranch, Shield, Network, Layers, FlaskConical, Rocket,
@@ -180,7 +180,7 @@ function ArticleFeedItem({ article }: { article: ArticleDTO }) {
    Main Page
    ════════════════════════════════════════ */
 export default function Home() {
-  const { user } = useAuthStore()
+  useAuthStore()
   const [articles, setArticles]     = useState<ArticleDTO[]>([])
   const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [tags, setTags]             = useState<TagDTO[]>([])
